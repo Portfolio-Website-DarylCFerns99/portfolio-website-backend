@@ -1,0 +1,43 @@
+import os
+from typing import List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Database settings
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# API settings
+API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+
+# Retry settings
+MAX_DB_RETRIES = int(os.getenv("MAX_DB_RETRIES", "3"))
+RETRY_BACKOFF = float(os.getenv("RETRY_BACKOFF", "0.5"))
+
+# Authentication settings
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "YOUR_DEFAULT_SECRET_KEY_CHANGE_THIS")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+# CORS settings
+def get_cors_origins() -> List[str]:
+    cors_origins = os.getenv("CORS_ORIGINS", "*")
+    if cors_origins == "*":
+        return ["*"]
+    return [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+
+CORS_ORIGINS = get_cors_origins()
+
+# Create a settings class for compatibility, but using variables directly
+class Settings:
+    DATABASE_URL = DATABASE_URL
+    API_PREFIX = API_PREFIX
+    DEBUG = DEBUG
+    MAX_DB_RETRIES = MAX_DB_RETRIES
+    RETRY_BACKOFF = RETRY_BACKOFF
+    CORS_ORIGINS = CORS_ORIGINS
+    JWT_SECRET_KEY = JWT_SECRET_KEY
+    ACCESS_TOKEN_EXPIRE_MINUTES = ACCESS_TOKEN_EXPIRE_MINUTES
+
+settings = Settings()

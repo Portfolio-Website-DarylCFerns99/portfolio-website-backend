@@ -1,0 +1,101 @@
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+import logging
+import time
+
+from app.config.settings import settings
+from app.config.database import engine, Base
+from app.controllers import project_controller, review_controller, user_controller, experience_controller, skill_controller
+from app.jobs.scheduler import init_scheduler, shutdown_scheduler
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Define lifespan context for FastAPI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Create tables and initialize scheduler
+    logger.info("Application starting up...")
+    Base.metadata.create_all(bind=engine)
+    scheduler = init_scheduler()
+    
+    yield
+    
+    # Shutdown: Gracefully stop the scheduler
+    logger.info("Application shutting down...")
+    shutdown_scheduler()
+
+# Create FastAPI app
+app = FastAPI(
+    title="Portfolio Website API",
+    description="A FastAPI MVC application for managing portfolio content",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Request timing middleware
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred"},
+    )
+
+# Include routers
+app.include_router(
+    user_controller.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    project_controller.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    review_controller.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    experience_controller.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    skill_controller.router,
+    prefix=settings.API_PREFIX
+)
+
+@app.get("/")
+def root():
+    return {"message": "Welcome to the Portfolio Website API"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
