@@ -8,6 +8,7 @@ from app.models.user_model import User
 from app.models.skill_model import Skill, SkillGroup
 from app.models.experience_model import Experience
 from app.models.project_model import Project
+from app.models.review_model import Review
 from app.schemas.user_schema import UserResponse, UserUpdate
 from app.security.password import verify_password
 from app.security.token import create_access_token
@@ -164,7 +165,7 @@ def calculate_total_experience(experiences):
         total_experience_years += years
     
     # Get the floor value
-    floor_years = math.floor(total_experience_years)
+    floor_years = round(total_experience_years)
 
     if floor_years < 2:
         return floor_years
@@ -178,7 +179,7 @@ def calculate_total_experience(experiences):
         return str(floor_years)
 
 @router.get("/public-data/{user_id}")
-def get_public_data(user_id: str, db: Session = Depends(get_db)):
+def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
     """
     Get all public data for the portfolio website for a specific user.
     This endpoint combines data from multiple sources and formats it according to the requirements.
@@ -206,6 +207,9 @@ def get_public_data(user_id: str, db: Session = Depends(get_db)):
     
     # Get all public projects
     projects = db.query(Project).filter(Project.is_visible == True).all()
+    
+    # Get all public projects
+    reviews = db.query(Review).filter(Review.is_visible == True).all()
     
     # Calculate total experience
     total_experience = calculate_total_experience(experiences)
@@ -271,7 +275,8 @@ def get_public_data(user_id: str, db: Session = Depends(get_db)):
             "description": project.description,
             "image": project.image,  # Already base64 encoded
             "tags": project.tags if project.tags else [],
-            "url": project.url
+            "url": project.url,
+            "additional_data": project.additional_data
         }
         formatted_projects.append(project_data)
     
@@ -336,7 +341,8 @@ def get_public_data(user_id: str, db: Session = Depends(get_db)):
         },
         "skillGroups": formatted_skill_groups,
         "timelineData": timeline_data,
-        "projects": formatted_projects
+        "projects": formatted_projects,
+        "reviews": reviews
     }
     
     return response

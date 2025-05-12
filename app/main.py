@@ -1,14 +1,18 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import time
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.config.settings import settings
 from app.config.database import engine, Base
-from app.controllers import project_controller, review_controller, user_controller, experience_controller, skill_controller
+from app.controllers import project_controller, review_controller, user_controller, experience_controller, skill_controller, contact_controller
 from app.jobs.scheduler import init_scheduler, shutdown_scheduler
+from app.dependencies.database import get_db
 
 # Configure logging
 logging.basicConfig(
@@ -92,9 +96,42 @@ app.include_router(
     prefix=settings.API_PREFIX
 )
 
+app.include_router(
+    contact_controller.router,
+    prefix=settings.API_PREFIX
+)
+
 @app.get("/")
 def root():
     return {"message": "Welcome to the Portfolio Website API"}
+
+@app.get("/healthz", status_code=status.HTTP_200_OK)
+async def health_check(
+    request: Request, 
+    response: Response,
+    db: Session = Depends(get_db)
+):
+    # Check if request has payload
+    if await request.body():
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return
+    
+    # Set no-cache header
+    response.headers["Cache-Control"] = "no-cache"
+    
+    # Check database connection
+    try:
+        # Execute a simple query to test connection
+        db.execute(text("SELECT 1"))
+        
+        # Return 200 OK with no content
+        response.status_code = status.HTTP_200_OK
+        return None
+    except SQLAlchemyError as e:
+        logger.error(f"Database connection error: {e}")
+        # Return 503 Service Unavailable with no content
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return None
 
 if __name__ == "__main__":
     import uvicorn

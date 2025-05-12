@@ -7,7 +7,7 @@ import uuid
 class ReviewBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1)
-    rating: str = Field(...)
+    rating: int = Field(..., ge=1, le=5, description="Rating must be between 1 and 5")
     where_known_from: Optional[str] = Field(None, max_length=200)
     is_visible: bool = True
 

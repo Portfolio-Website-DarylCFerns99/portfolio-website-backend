@@ -12,6 +12,7 @@ class ProjectBase(BaseModel):
     tags: List[str] = Field(default_factory=list)
     url: Optional[str] = None
     is_visible: bool = True  # Default to visible
+    additional_data: Optional[Dict[str, Any]] = None
 
     # Validate that type is either "github" or "custom"
     @validator('type')
@@ -33,6 +34,7 @@ class ProjectUpdate(BaseModel):
     tags: Optional[List[str]] = None
     url: Optional[str] = None
     is_visible: Optional[bool] = None
+    additional_data: Optional[Dict[str, Any]] = None
 
     # Validate that type is either "github" or "custom" if provided
     @validator('type')

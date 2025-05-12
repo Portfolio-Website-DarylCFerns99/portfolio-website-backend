@@ -61,6 +61,35 @@ async def fetch_github_data(github_url: str) -> Tuple[Dict[str, Any], Dict[str, 
         # Complete GitHub API response
         github_data = response.json()
         
+        # Fetch README.md file
+        readme_url = f"https://raw.githubusercontent.com/{username}/{repo_name}/main/README.md"
+        try:
+            readme_response = await client.get(readme_url, follow_redirects=True)
+            if readme_response.status_code == 200:
+                github_data['readme_file'] = readme_response.text
+            else:
+                github_data['readme_file'] = None
+                logger.info(f"README not found at main branch, status: {readme_response.status_code}")
+        except Exception as e:
+            github_data['readme_file'] = None
+            logger.error(f"Error fetching README: {str(e)}")
+        
+        # Fetch languages data
+        languages_url = github_data.get('languages_url')
+        if languages_url:
+            try:
+                languages_response = await client.get(languages_url, headers=headers)
+                if languages_response.status_code == 200:
+                    github_data['languages'] = languages_response.json()
+                else:
+                    github_data['languages'] = {}
+                    logger.info(f"Languages data not available, status: {languages_response.status_code}")
+            except Exception as e:
+                github_data['languages'] = {}
+                logger.error(f"Error fetching languages data: {str(e)}")
+        else:
+            github_data['languages'] = {}
+        
         # Extract relevant information for project fields
         basic_data = {
             "title": github_data.get("name", ""),
