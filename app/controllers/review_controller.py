@@ -19,8 +19,7 @@ router = APIRouter(
 @router.post("", response_model=ReviewResponse, status_code=status.HTTP_201_CREATED)
 def create_review(
     review_data: ReviewCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Create a new review (requires authentication)"""
     service = ReviewService(db)

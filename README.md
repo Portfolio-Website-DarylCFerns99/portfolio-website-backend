@@ -13,6 +13,8 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 - **Public/Private Routes**: Auth-required for admin, public access for visitors
 - **UUID Primary Keys**: Enhanced security with UUID identifiers
 - **Database Resilience**: Retry and rollback mechanisms
+- **Contact Form Email**: SendGrid integration for contact form submissions with email notifications
+- **Health Check**: Database connectivity monitoring endpoint
 
 ## Project Structure
 
@@ -27,7 +29,8 @@ portfolio-website-backend/
 │   │   ├── review_controller.py
 │   │   ├── experience_controller.py
 │   │   ├── skill_controller.py
-│   │   └── user_controller.py
+│   │   ├── user_controller.py
+│   │   └── contact_controller.py
 │   ├── dependencies/         # FastAPI dependencies
 │   │   ├── auth.py           # Authentication
 │   │   └── database.py       # DB session
@@ -51,7 +54,8 @@ portfolio-website-backend/
 │   │   ├── review_schema.py
 │   │   ├── experience_schema.py
 │   │   ├── skill_schema.py
-│   │   └── user_schema.py
+│   │   ├── user_schema.py
+│   │   └── contact_schema.py
 │   ├── security/             # Auth components
 │   │   ├── password.py       # Password hashing
 │   │   └── token.py          # JWT functionality
@@ -60,8 +64,14 @@ portfolio-website-backend/
 │   │   ├── review_service.py
 │   │   ├── experience_service.py
 │   │   └── skill_service.py
+│   ├── templates/            # Email templates
+│   │   └── emails/
+│   │       ├── confirmation.html
+│   │       └── notification.html
 │   ├── utils/                # Utilities
-│   │   └── github_utils.py   # GitHub API integration
+│   │   ├── github_utils.py   # GitHub API integration
+│   │   ├── sendgrid_utils.py # Email functionality
+│   │   └── template_loader.py # Email template rendering
 │   ├── __init__.py           # Package initialization
 │   └── main.py               # App entry point
 ├── scripts/
@@ -137,6 +147,14 @@ portfolio-website-backend/
 ### Skills (Public)
 
 - `GET /api/v1/skills/groups/public` - List visible skill groups only (public access)
+
+### Contact
+
+- `POST /api/v1/contact/{user_id}` - Send contact form emails (public access)
+
+### System
+
+- `GET /healthz` - Health check endpoint to verify API and database availability
 
 ## Models
 
@@ -244,6 +262,28 @@ This enables you to hide items without deleting them, useful for:
 - Content moderation
 - Seasonal content
 
+## Contact Form Email System
+
+The API includes a complete contact form email system using SendGrid:
+
+- **Contact Form Endpoint**: `POST /api/v1/contact/{user_id}` allows visitors to send messages
+- **Dual Email System**:
+  - Confirmation email sent to the visitor with a thank you message
+  - Notification email sent to the portfolio owner with the visitor's message
+- **HTML Email Templates**: Professional responsive email templates
+- **Social Links Integration**: Your social links are automatically included in confirmation emails
+- **Reply Functionality**: Easy one-click reply buttons in notification emails
+
+To use this feature:
+
+1. Set up a SendGrid account and get an API key
+2. Add these variables to your `.env` file:
+   ```
+   SENDGRID_API_KEY=your_sendgrid_api_key
+   SENDGRID_FROM_EMAIL=your-verified@email.com
+   ADMIN_EMAIL=your-admin@email.com
+   ```
+
 ## Setup and Installation
 
 1. Clone the repository:
@@ -275,7 +315,10 @@ This enables you to hide items without deleting them, useful for:
    JWT_SECRET_KEY=your_secret_key
    ACCESS_TOKEN_EXPIRE_MINUTES=120
    GITHUB_TOKEN=your_github_token  # Optional, for GitHub API
-   CORS_ORIGINS=http://localhost:3000,http://localhost:5000,https://yourdomain.com
+   CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
+   SENDGRID_API_KEY=your_sendgrid_api_key  # For email functionality
+   SENDGRID_FROM_EMAIL=your-verified@email.com
+   ADMIN_EMAIL=your-admin@email.com
    ```
    Note: For CORS_ORIGINS, you can specify multiple origins separated by commas, or use "*" to allow all origins.
 
