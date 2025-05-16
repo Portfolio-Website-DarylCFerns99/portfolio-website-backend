@@ -1,0 +1,138 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+        cache-dependency-path: './requirements.txt'
+    
+    - name: Create Production .env file
+      run: echo "${{ secrets.ENV_FILE }}" > .env
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest flake8
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      continue-on-error: true
+
+    # - name: Run tests
+    #   run: |
+    #     pytest
+    #   continue-on-error: true
+
+    - name: Set up Google Cloud SDK
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
+
+    - name: Configure Docker
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      run: |
+        gcloud auth configure-docker gcr.io
+
+    - name: Build and Push Docker image
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      run: |
+        IMAGE_TAG=$(echo $GITHUB_SHA | head -c7)
+        echo "Building image with tag: $IMAGE_TAG"
+        docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:$IMAGE_TAG .
+        docker tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:$IMAGE_TAG gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:latest
+        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:$IMAGE_TAG
+        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:latest
+        echo "Image pushed: gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:$IMAGE_TAG"
+
+    - name: Update Kubernetes deployment
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      run: |
+        IMAGE_TAG=$(echo $GITHUB_SHA | head -c7)
+        gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} --region ${{ secrets.GCP_REGION }} --project ${{ secrets.GCP_PROJECT_ID }}
+        
+        # Check if deployment exists
+        if kubectl get deployment ${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} &> /dev/null; then
+          echo "Updating existing deployment"
+          kubectl set image deployment/${{ secrets.DEPLOYMENT_NAME }} api=gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:$IMAGE_TAG -n ${{ secrets.K8S_NAMESPACE }}
+        else
+          echo "Creating new deployment"
+          cat <<EOF | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${{ secrets.DEPLOYMENT_NAME }}
+          namespace: ${{ secrets.K8S_NAMESPACE }}
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: ${{ secrets.DEPLOYMENT_NAME }}
+          template:
+            metadata:
+              labels:
+                app: ${{ secrets.DEPLOYMENT_NAME }}
+            spec:
+              containers:
+              - name: api
+                image: gcr.io/${{ secrets.GCP_PROJECT_ID }}/fastapi-app:$IMAGE_TAG
+                ports:
+                - containerPort: 8000
+                resources:
+                  limits:
+                    cpu: "0.5"
+                    memory: "512Mi"
+                  requests:
+                    cpu: "0.25"
+                    memory: "256Mi"
+                readinessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: 8000
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+        EOF
+        fi
+        
+        # Check if service exists
+        if ! kubectl get service ${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} &> /dev/null; then
+          echo "Creating service"
+          cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${{ secrets.DEPLOYMENT_NAME }}
+          namespace: ${{ secrets.K8S_NAMESPACE }}
+        spec:
+          selector:
+            app: ${{ secrets.DEPLOYMENT_NAME }}
+          ports:
+          - port: 8000
+            targetPort: 8000
+            name: http
+          type: ClusterIP
+        EOF
+        fi
+        
+        # Wait for deployment to complete
+        kubectl rollout status deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} --timeout=180s
+        echo "Backend deployment complete"
