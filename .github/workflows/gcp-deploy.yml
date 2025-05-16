@@ -51,6 +51,19 @@ jobs:
       uses: google-github-actions/setup-gcloud@v1
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
+    
+    - name: Install GKE Auth Plugin
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      run: |
+        echo "Installing GKE auth plugin..."
+        gcloud components install gke-gcloud-auth-plugin
+        echo "GKE auth plugin installed."
+        
+    - name: Set Kubectl Config
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      run: |
+        echo "Setting USE_GKE_GCLOUD_AUTH_PLUGIN=True"
+        echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
 
     - name: Configure Docker
       if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
