@@ -130,25 +130,28 @@ jobs:
         EOF
         fi
         
-        # Check if service exists
-        if ! kubectl get service ${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} &> /dev/null; then
-          echo "Creating service"
-          cat <<EOF | kubectl apply -f -
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: ${{ secrets.DEPLOYMENT_NAME }}
-          namespace: ${{ secrets.K8S_NAMESPACE }}
-        spec:
-          selector:
-            app: ${{ secrets.DEPLOYMENT_NAME }}
-          ports:
-          - port: 8000
-            targetPort: 8000
-            name: http
-          type: ClusterIP
-        EOF
-        fi
+        # # Check if service exists
+        # if ! kubectl get service ${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} &> /dev/null; then
+        #   echo "Creating service"
+        #   cat <<EOF | kubectl apply -f -
+        # apiVersion: v1
+        # kind: Service
+        # metadata:
+        #   name: ${{ secrets.DEPLOYMENT_NAME }}
+        #   namespace: ${{ secrets.K8S_NAMESPACE }}
+        #   annotations:
+        #     cloud.google.com/neg: '{"ingress":true}'
+        #     cloud.google.com/neg-status: '{"network_endpoint_groups": {"8000": "${{ secrets.K8S_NAMESPACE }}-gke-neg"}}'
+        # spec:
+        #   selector:
+        #     app: ${{ secrets.DEPLOYMENT_NAME }}
+        #   ports:
+        #   - port: 8000
+        #     targetPort: 8000
+        #     name: http
+        #   type: ClusterIP
+        # EOF
+        # fi
         
         # Wait for deployment to complete
         kubectl rollout status deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} --timeout=180s
