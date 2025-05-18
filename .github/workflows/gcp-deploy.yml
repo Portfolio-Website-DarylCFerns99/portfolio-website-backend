@@ -130,29 +130,25 @@ jobs:
         EOF
         fi
         
-        # # Check if service exists
-        # if ! kubectl get service ${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} &> /dev/null; then
-        #   echo "Creating service"
-        #   cat <<EOF | kubectl apply -f -
-        # apiVersion: v1
-        # kind: Service
-        # metadata:
-        #   name: ${{ secrets.DEPLOYMENT_NAME }}
-        #   namespace: ${{ secrets.K8S_NAMESPACE }}
-        #   annotations:
-        #     cloud.google.com/neg: '{"ingress":true}'
-        #     cloud.google.com/neg-status: '{"network_endpoint_groups": {"8000": "${{ secrets.K8S_NAMESPACE }}-gke-neg"}}'
-        # spec:
-        #   selector:
-        #     app: ${{ secrets.DEPLOYMENT_NAME }}
-        #   ports:
-        #   - port: 8000
-        #     targetPort: 8000
-        #     name: http
-        #   type: ClusterIP
-        # EOF
-        # fi
-        
         # Wait for deployment to complete
         kubectl rollout status deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} --timeout=180s
         echo "Backend deployment complete"
+      
+    - name: Register pods with NEG
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+      run: |
+        # Get pod IPs and node names
+        PODS_INFO=$(kubectl get pods -n ${{ secrets.K8S_NAMESPACE }} -l app=${{ secrets.DEPLOYMENT_NAME }} -o jsonpath='{range .items[*]}{.metadata.name},{.status.podIP},{.spec.nodeName}{"\n"}{end}')
+        
+        # Clear existing endpoints from NEG
+        gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
+          --zone=${{ secrets.GCP_ZONE }} \
+          --remove-all-endpoints || true
+        
+        # Register each pod with the NEG
+        echo "$PODS_INFO" | while IFS=, read -r POD_NAME POD_IP NODE_NAME; do
+          echo "Registering pod $POD_NAME on node $NODE_NAME with IP $POD_IP"
+          gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
+            --zone=${{ secrets.GCP_ZONE }} \
+            --add-endpoint="instance=$NODE_NAME,ip=$POD_IP,port=${{ secrets.GCP_BACKEND_PORT }}"
+        done
