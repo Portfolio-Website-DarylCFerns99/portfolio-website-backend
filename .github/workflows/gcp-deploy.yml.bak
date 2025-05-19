@@ -134,37 +134,69 @@ jobs:
         kubectl rollout status deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} --timeout=180s
         echo "Backend deployment complete"
       
+    # - name: Register pods with NEG
+    #   if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    #   run: |
+    #     # Wait for deployment to complete
+    #     kubectl rollout status deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} --timeout=180s
+
+    #     # Get pod IPs and node names
+    #     PODS_INFO=$(kubectl get pods -n ${{ secrets.K8S_NAMESPACE }} -l app=${{ secrets.DEPLOYMENT_NAME }} -o jsonpath='{range .items[*]}{.metadata.name},{.status.podIP},{.spec.nodeName}{"\n"}{end}')
+        
+    #     # Get existing endpoints in the NEG
+    #     EXISTING_ENDPOINTS=$(gcloud compute network-endpoint-groups list-network-endpoints ${{ secrets.K8S_NAMESPACE }}-gke-neg --zone=${{ secrets.GCP_ZONE }} --format="value(networkEndpoint.instance,networkEndpoint.ipAddress,networkEndpoint.port)")
+        
+    #     # Register each pod with the NEG
+    #     echo "$PODS_INFO" | while IFS=, read -r POD_NAME POD_IP NODE_NAME; do
+    #       echo "Registering pod $POD_NAME on node $NODE_NAME with IP $POD_IP"
+    #       gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
+    #         --zone=${{ secrets.GCP_ZONE }} \
+    #         --add-endpoint="instance=$NODE_NAME,ip=$POD_IP,port=${{ secrets.GCP_BACKEND_PORT }}" || true
+    #     done
+        
+    #     # Remove existing endpoints one by one (if any)
+    #     if [ -n "$EXISTING_ENDPOINTS" ]; then
+    #       echo "Removing existing endpoints..."
+    #       echo "$EXISTING_ENDPOINTS" | while read -r INSTANCE IP PORT REST; do
+    #         if [ -n "$INSTANCE" ] && [ -n "$IP" ] && [ -n "$PORT" ]; then
+    #           echo "Removing endpoint: instance=$INSTANCE,ip=$IP,port=$PORT"
+    #           gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
+    #             --zone=${{ secrets.GCP_ZONE }} \
+    #             --remove-endpoint="instance=$INSTANCE,ip=$IP,port=$PORT" || true
+    #         fi
+    #       done
+    #     else
+    #       echo "No existing endpoints to remove"
+    #     fi
+      
     - name: Register pods with NEG
       if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
       run: |
         # Wait for deployment to complete
         kubectl rollout status deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.K8S_NAMESPACE }} --timeout=180s
-        
-        # Get existing endpoints in the NEG
-        EXISTING_ENDPOINTS=$(gcloud compute network-endpoint-groups list-network-endpoints ${{ secrets.K8S_NAMESPACE }}-gke-neg --zone=${{ secrets.GCP_ZONE }} --format="value(networkEndpoint.instance,networkEndpoint.ipAddress,networkEndpoint.port)")
-        
-        # Remove existing endpoints one by one (if any)
-        if [ -n "$EXISTING_ENDPOINTS" ]; then
-          echo "Removing existing endpoints..."
-          echo "$EXISTING_ENDPOINTS" | while read -r INSTANCE IP PORT REST; do
-            if [ -n "$INSTANCE" ] && [ -n "$IP" ] && [ -n "$PORT" ]; then
-              echo "Removing endpoint: instance=$INSTANCE,ip=$IP,port=$PORT"
-              gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
-                --zone=${{ secrets.GCP_ZONE }} \
-                --remove-endpoint="instance=$INSTANCE,ip=$IP,port=$PORT" || true
-            fi
-          done
-        else
-          echo "No existing endpoints to remove"
-        fi
 
-        # Get pod IPs and node names
+        # Get current (new) pod information
         PODS_INFO=$(kubectl get pods -n ${{ secrets.K8S_NAMESPACE }} -l app=${{ secrets.DEPLOYMENT_NAME }} -o jsonpath='{range .items[*]}{.metadata.name},{.status.podIP},{.spec.nodeName}{"\n"}{end}')
-        
-        # Register each pod with the NEG
+
+        # Get existing NEG endpoints
+        EXISTING_ENDPOINTS=$(gcloud compute network-endpoint-groups list-network-endpoints ${{ secrets.K8S_NAMESPACE }}-gke-neg --zone=${{ secrets.GCP_ZONE }} --format="value(networkEndpoint.instance,networkEndpoint.ipAddress,networkEndpoint.port)")
+
+        # Create a list of current pod IPs for later comparison
+        CURRENT_POD_IPS=$(echo "$PODS_INFO" | cut -d',' -f2)
+
+        # Add new pods to NEG
         echo "$PODS_INFO" | while IFS=, read -r POD_NAME POD_IP NODE_NAME; do
-          echo "Registering pod $POD_NAME on node $NODE_NAME with IP $POD_IP"
           gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
             --zone=${{ secrets.GCP_ZONE }} \
             --add-endpoint="instance=$NODE_NAME,ip=$POD_IP,port=${{ secrets.GCP_BACKEND_PORT }}" || true
+        done
+
+        # Remove only endpoints that don't match current pods
+        echo "$EXISTING_ENDPOINTS" | while read -r INSTANCE IP PORT REST; do
+          # Check if this endpoint's IP is in our current pods
+          if ! echo "$CURRENT_POD_IPS" | grep -q "$IP"; then
+            gcloud compute network-endpoint-groups update ${{ secrets.K8S_NAMESPACE }}-gke-neg \
+              --zone=${{ secrets.GCP_ZONE }} \
+              --remove-endpoint="instance=$INSTANCE,ip=$IP,port=$PORT" || true
+          fi
         done
