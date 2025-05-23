@@ -7,6 +7,100 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def is_absolute_url(url: str) -> bool:
+    """Check if a URL is absolute (starts with http:// or https://)"""
+    return url.startswith(('http://', 'https://'))
+
+def is_relative_path(path: str) -> bool:
+    """Check if a path is relative (not absolute URL, not starting with /, not email)"""
+    if is_absolute_url(path):
+        return False
+    if path.startswith('/'):
+        return False
+    if '@' in path and not '/' in path:  # likely an email
+        return False
+    if path.startswith('#'):  # anchor link
+        return False
+    return True
+
+def convert_relative_links(markdown_content: str, github_url: str, branch: str = 'main') -> str:
+    """
+    Convert relative links in markdown to absolute GitHub URLs
+    
+    Args:
+        markdown_content (str): The markdown content to process
+        github_url (str): The base GitHub repository URL (e.g., 'https://github.com/user/repo')
+        branch (str): The branch name to use (default: 'main')
+    
+    Returns:
+        str: Modified markdown content with absolute URLs
+    """
+    
+    # Ensure github_url doesn't end with slash
+    github_url = github_url.rstrip('/')
+    
+    # Pattern 1: Complex image links with clickable image [![alt](path)](path)
+    def replace_complex_image_link(match):
+        alt_text = match.group(1)
+        image_path = match.group(2)
+        link_path = match.group(3)
+        
+        new_image_path = image_path
+        new_link_path = link_path
+        
+        if is_relative_path(image_path):
+            new_image_path = f"{github_url}/{image_path}"
+        
+        if is_relative_path(link_path):
+            new_link_path = f"{github_url}/{link_path}"
+        
+        return f"[![{alt_text}]({new_image_path})]({new_link_path})"
+    
+    # Pattern 2: Simple image links ![alt](path)
+    def replace_simple_image_link(match):
+        alt_text = match.group(1)
+        image_path = match.group(2)
+        
+        if is_relative_path(image_path):
+            new_path = f"{github_url}/{image_path}"
+            return f"![{alt_text}]({new_path})"
+        return match.group(0)
+    
+    # Pattern 3: Regular links [text](path)
+    def replace_regular_link(match):
+        link_text = match.group(1)
+        link_path = match.group(2)
+        
+        if is_relative_path(link_path):
+            new_path = f"{github_url}/{link_path}"
+            return f"[{link_text}]({new_path})"
+        return match.group(0)
+    
+    # Apply replacements in order (most specific first)
+    
+    # 1. Complex image links [![alt](path)](path)
+    markdown_content = re.sub(
+        r'\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)',
+        replace_complex_image_link,
+        markdown_content
+    )
+    
+    # 2. Simple image links ![alt](path) (not already part of complex links)
+    markdown_content = re.sub(
+        r'(?<!\[)!\[([^\]]*)\]\(([^)]+)\)(?!\])',
+        replace_simple_image_link,
+        markdown_content
+    )
+    
+    # 3. Regular links [text](path) (not image links)
+    markdown_content = re.sub(
+        r'(?<!!)(?<!\])\[([^\]]+)\]\(([^)]+)\)',
+        replace_regular_link,
+        markdown_content
+    )
+    
+    return markdown_content
+
 async def fetch_github_data(github_url: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Extracts username and repository name from a GitHub URL and fetches 
@@ -62,11 +156,12 @@ async def fetch_github_data(github_url: str) -> Tuple[Dict[str, Any], Dict[str, 
         github_data = response.json()
         
         # Fetch README.md file
-        readme_url = f"https://raw.githubusercontent.com/{username}/{repo_name}/main/README.md"
+        raw_github_url = f"https://raw.githubusercontent.com/{username}/{repo_name}/main/"
+        readme_url = f"{raw_github_url}/README.md"
         try:
             readme_response = await client.get(readme_url, follow_redirects=True)
             if readme_response.status_code == 200:
-                github_data['readme_file'] = readme_response.text
+                github_data['readme_file'] = convert_relative_links(readme_response.text, raw_github_url)
             else:
                 github_data['readme_file'] = None
                 logger.info(f"README not found at main branch, status: {readme_response.status_code}")
