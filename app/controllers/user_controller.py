@@ -276,7 +276,8 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
             "image": project.image,  # Already base64 encoded
             "tags": project.tags if project.tags else [],
             "url": project.url,
-            "additional_data": project.additional_data
+            "additional_data": project.additional_data,
+            "created_at": project.created_at
         }
         formatted_projects.append(project_data)
     
