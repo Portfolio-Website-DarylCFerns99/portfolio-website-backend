@@ -10,7 +10,7 @@ class Review(BaseModel):
     content = Column(Text, nullable=False)
     rating = Column(Integer, nullable=False)
     where_known_from = Column(String(200), nullable=True)
-    is_visible = Column(Boolean, default=True)  # Flag to control visibility
+    is_visible = Column(Boolean, default=False)
     
     __table_args__ = (
         CheckConstraint('rating >= 1 AND rating <= 5', name='check_rating_range'),
