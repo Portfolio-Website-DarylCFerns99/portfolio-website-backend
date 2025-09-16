@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
-from app.utils.sendgrid_utils import SendGridEmail
+# from app.utils.sendgrid_utils import SendGridEmail
+from app.utils.mailgun_utils import MailgunEmail
 from app.dependencies.database import get_db
 from app.models.user_model import User
 from app.schemas.contact_schema import SocialLink, ContactRequest
@@ -18,7 +19,7 @@ async def send_contact_email(
     db: Session = Depends(get_db)
 ):
     try:
-        email_sender = SendGridEmail()
+        email_sender = MailgunEmail()
         
         # Get the specific user from the database using user_id
         user = db.query(User).filter(User.id == user_id).first()
