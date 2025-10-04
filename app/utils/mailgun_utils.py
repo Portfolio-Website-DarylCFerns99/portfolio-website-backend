@@ -80,7 +80,7 @@ class MailgunEmail:
             auth=("api", self.api_key),
             data={
                 "from": self.from_email,
-                "to": [email],
+                "to": [self.admin_email],
                 "subject": subject,
                 "template": self.notification_template_id,
                 "t:variables": json.dumps(template_data)
