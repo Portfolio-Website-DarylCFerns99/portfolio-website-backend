@@ -25,6 +25,7 @@ from app.models.base_model import Base
 from app.models.project_model import Project
 from app.models.review_model import Review
 from app.models.user_model import User
+from app.models.project_category_model import ProjectCategory
 target_metadata = Base.metadata
 # target_metadata = None
 

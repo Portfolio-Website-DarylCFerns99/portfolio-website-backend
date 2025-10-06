@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, JSON, DateTime, Boolean
+from sqlalchemy import Column, String, Text, JSON, DateTime, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from app.models.base_model import BaseModel
 import uuid
@@ -15,3 +15,4 @@ class Project(BaseModel):
     additional_data = Column(JSON, nullable=True)  # Store complete GitHub API response
     expiry_date = Column(DateTime, nullable=True)  # Expiry date for non-custom projects
     is_visible = Column(Boolean, default=True)  # Flag to control visibility
+    project_category_id = Column(UUID(as_uuid=True), ForeignKey("project_categories.id"), nullable=True)

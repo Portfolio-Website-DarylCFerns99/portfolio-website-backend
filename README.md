@@ -13,6 +13,7 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 ## 🚀 Features
 
 - **Project Management**: CRUD operations for portfolio projects with visibility control
+- **Project Categories**: Classify projects into categories with visibility control
 - **GitHub Integration**: Auto-fetch data for GitHub projects with daily refresh
 - **Review System**: Create and manage testimonials with visibility control
 - **Experience/Education**: Track work and educational history
@@ -21,7 +22,7 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 - **Public/Private Routes**: Auth-required for admin, public access for visitors
 - **UUID Primary Keys**: Enhanced security with UUID identifiers
 - **Database Resilience**: Retry and rollback mechanisms
-- **Contact Form Email**: SendGrid integration for contact form submissions with email notifications
+- **Contact Form Email**: SendGrid/Mailgun integration for contact form submissions with email notifications
 - **Health Check**: Database connectivity monitoring endpoint
 - **CI/CD Pipeline**: Automated testing, building, and deployment with GitHub Actions
 - **Cloud Deployment**: Ready for Google Cloud Platform (GKE) deployment
@@ -39,6 +40,7 @@ portfolio-website-backend/
 │   │   └── settings.py       # App settings
 │   ├── controllers/          # API endpoints
 │   │   ├── project_controller.py
+│   │   ├── project_category_controller.py
 │   │   ├── review_controller.py
 │   │   ├── experience_controller.py
 │   │   ├── skill_controller.py
@@ -52,6 +54,7 @@ portfolio-website-backend/
 │   ├── models/               # Database models
 │   │   ├── base_model.py
 │   │   ├── project_model.py
+│   │   ├── project_category_model.py
 │   │   ├── review_model.py
 │   │   ├── experience_model.py
 │   │   ├── skill_model.py
@@ -59,11 +62,13 @@ portfolio-website-backend/
 │   ├── repositories/         # Data access layer
 │   │   ├── base_repository.py
 │   │   ├── project_repository.py
+│   │   ├── project_category_repository.py
 │   │   ├── review_repository.py
 │   │   ├── experience_repository.py
 │   └── skill_repository.py
 │   ├── schemas/              # Pydantic schemas
 │   │   ├── project_schema.py
+│   │   ├── project_category_schema.py
 │   │   ├── review_schema.py
 │   │   ├── experience_schema.py
 │   │   ├── skill_schema.py
@@ -74,6 +79,7 @@ portfolio-website-backend/
 │   │   └── token.py          # JWT functionality
 │   ├── services/             # Business logic
 │   │   ├── project_service.py
+│   │   ├── project_category_service.py
 │   │   ├── review_service.py
 │   │   ├── experience_service.py
 │   │   └── skill_service.py
@@ -83,7 +89,8 @@ portfolio-website-backend/
 │   │       └── notification.html
 │   ├── utils/                # Utilities
 │   │   ├── github_utils.py   # GitHub API integration
-│   │   ├── sendgrid_utils.py # Email functionality
+│   │   ├── mailgun_utils.py  # Mailgun Email functionality
+│   │   ├── sendgrid_utils.py # Sendgrid Email functionality
 │   │   ├── file_utils.py     # File handling utilities
 │   │   ├── db_utils.py       # Database utilities
 │   │   └── template_loader.py # Email template rendering
@@ -125,7 +132,17 @@ portfolio-website-backend/
 ### Projects (Public)
 
 - `GET /api/v1/projects/public` - List visible projects only (public access)
-- `GET /api/v1/projects/public/{id}` - Get a specific visible project (public access)
+
+### Project Categories (Admin)
+
+- `GET /api/v1/project-categories` - List all categories including hidden ones (requires auth)
+- `POST /api/v1/project-categories` - Create a new category (requires auth)
+- `GET /api/v1/project-categories/{id}` - Get a category by ID including if hidden (requires auth)
+- `PUT /api/v1/project-categories/{id}` - Update a category (requires auth)
+
+### Project Categories (Public)
+
+- `GET /api/v1/project-categories/public` - List visible categories only (public access)
 
 ### Reviews (Admin)
 
@@ -138,7 +155,6 @@ portfolio-website-backend/
 ### Reviews (Public)
 
 - `GET /api/v1/reviews/public` - List visible reviews only (public access)
-- `GET /api/v1/reviews/public/{id}` - Get a specific visible review (public access)
 
 ### Experiences/Education (Admin)
 
@@ -226,7 +242,7 @@ This enables you to hide items without deleting them, useful for:
 
 ## 📧 Contact Form Email System
 
-The API includes a complete contact form email system using SendGrid:
+The API includes a complete contact form email system using SendGrid and Mailgun:
 
 - **Contact Form Endpoint**: `POST /api/v1/contact/{user_id}` allows visitors to send messages
 - **Dual Email System**:
@@ -238,14 +254,14 @@ The API includes a complete contact form email system using SendGrid:
 
 To use this feature:
 
-1. Set up a SendGrid account and get an API key
+1. Set up a SendGrid/Mailgun account and get an API key
 2. Add these variables to your `.env` file:
    ```
-   SENDGRID_API_KEY=your_sendgrid_api_key
-   SENDGRID_FROM_EMAIL=your-verified@email.com
+   SENDGRID_API_KEY/MAILGUN_API_KEY=your_sendgrid/mailgun_api_key
+   SENDGRID_FROM_EMAIL/MAILGUN_FROM_EMAIL=your-verified@email.com
+   SENDGRID_NOTIFICATION_TEMPLATE_ID/MAILGUN_NOTIFICATION_TEMPLATE_ID=your_notification_template_id
+   SENDGRID_CONFIRMATION_TEMPLATE_ID/MAILGUN_CONFIRMATION_TEMPLATE_ID=your_confirmation_template_id
    ADMIN_EMAIL=your-admin@email.com
-   SENDGRID_NOTIFICATION_TEMPLATE_ID=your_notification_template_id
-   SENDGRID_CONFIRMATION_TEMPLATE_ID=your_confirmation_template_id
    ```
 
 ## ⚙️ Setup and Installation
@@ -291,11 +307,11 @@ To use this feature:
    ACCESS_TOKEN_EXPIRE_MINUTES=120
    GITHUB_TOKEN=your_github_token  # Optional, for GitHub API
    CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
-   SENDGRID_API_KEY=your_sendgrid_api_key  # For email functionality
-   SENDGRID_FROM_EMAIL=your-verified@email.com
+   MAILGUN_API_KEY=your_mailgun_api_key  # For email functionality
+   MAILGUN_FROM_EMAIL=your-verified@email.com
+   MAILGUN_NOTIFICATION_TEMPLATE_ID=your_notification_template_id
+   MAILGUN_CONFIRMATION_TEMPLATE_ID=your_confirmation_template_id
    ADMIN_EMAIL=your-admin@email.com
-   SENDGRID_NOTIFICATION_TEMPLATE_ID=your_notification_template_id
-   SENDGRID_CONFIRMATION_TEMPLATE_ID=your_confirmation_template_id
    ```
    **Note**: For CORS_ORIGINS, you can specify multiple origins separated by commas, or use "*" to allow all origins (not recommended for production).
 
@@ -588,8 +604,8 @@ DATABASE_URL=postgresql://user:secure_password@prod-db:5432/portfolio_prod
 DEBUG=False
 JWT_SECRET_KEY=your_super_secure_production_key_here
 CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-SENDGRID_API_KEY=your_production_sendgrid_key
-SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+SENDGRID_API_KEY/MAILGUN_API_KEY=your_production_sendgrid/mailgun_key
+SENDGRID_FROM_EMAIL/MAILGUN_FROM_EMAIL=noreply@yourdomain.com
 ADMIN_EMAIL=admin@yourdomain.com
 ```
 
