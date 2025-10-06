@@ -8,6 +8,7 @@ from app.models.user_model import User
 from app.models.skill_model import Skill, SkillGroup
 from app.models.experience_model import Experience
 from app.models.project_model import Project
+from app.models.project_category_model import ProjectCategory
 from app.models.review_model import Review
 from app.schemas.user_schema import UserResponse, UserUpdate
 from app.security.password import verify_password
@@ -205,6 +206,9 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
     # Get all public experiences (work and education)
     experiences = db.query(Experience).filter(Experience.is_visible == True).all()
     
+    # Get all public project categories
+    project_categories = db.query(ProjectCategory).filter(ProjectCategory.is_visible == True).all()
+    
     # Get all public projects
     projects = db.query(Project).filter(Project.is_visible == True).all()
     
@@ -277,7 +281,8 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
             "tags": project.tags if project.tags else [],
             "url": project.url,
             "additional_data": project.additional_data,
-            "created_at": project.created_at
+            "created_at": project.created_at,
+            "project_category_id": str(project.project_category_id)
         }
         formatted_projects.append(project_data)
     
@@ -342,6 +347,7 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
         },
         "skillGroups": formatted_skill_groups,
         "timelineData": timeline_data,
+        "projectCategories": project_categories,
         "projects": formatted_projects,
         "reviews": reviews
     }

@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from app.config.settings import settings
 from app.config.database import engine, Base
-from app.controllers import project_controller, review_controller, user_controller, experience_controller, skill_controller, contact_controller
+from app.controllers import project_controller, review_controller, user_controller, experience_controller, skill_controller, contact_controller, project_category_controller
 from app.jobs.scheduler import init_scheduler, shutdown_scheduler
 from app.dependencies.database import get_db
 
@@ -96,6 +96,10 @@ app.include_router(
     prefix=settings.API_PREFIX
 )
 
+app.include_router(
+    project_category_controller.router,
+    prefix=settings.API_PREFIX
+)
 app.include_router(
     contact_controller.router,
     prefix=settings.API_PREFIX
