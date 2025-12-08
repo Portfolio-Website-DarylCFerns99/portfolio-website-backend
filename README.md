@@ -320,6 +320,17 @@ To use this feature:
    alembic upgrade head
    ```
 
+   **🤖 For Chatbot (pgvector):**
+   ```bash
+   # 1. Enable extension
+   alembic upgrade head
+   
+   # 2. Setup Vector Tables
+   alembic revision --autogenerate -m "create vector_embeddings table"
+   
+   alembic upgrade head
+   ```
+
    If you've made changes to the database models, generate a new migration:
    ```bash
    alembic revision --autogenerate -m "your migration message"
