@@ -30,6 +30,20 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 - **CI/CD Pipeline**: Automated testing, building, and deployment with GitHub Actions
 - **Cloud Deployment**: Ready for Google Cloud Platform (GKE) deployment
 
+Projects of type "github" will:
+- Fetch repository data from GitHub when created
+- Store complete GitHub API response in the `additional_data` field
+- Have a 1-day expiration for the data
+- Auto-refresh when accessed after expiration
+- Can be manually refreshed via the refresh endpoint
+- Support for private repositories (with proper GitHub token)
+
+**GitHub API Features:**
+- Repository metadata (stars, forks, language, description)
+- README content extraction
+- Repository statistics
+- Automatic language detection
+
 ## 📁 Project Structure
 
 ```
@@ -326,17 +340,6 @@ To use this feature:
    alembic upgrade head
    ```
 
-   **🤖 For Chatbot (pgvector):**
-   ```bash
-   # 1. Enable extension
-   alembic upgrade head
-   
-   # 2. Setup Vector Tables
-   alembic revision --autogenerate -m "create vector_embeddings table"
-   
-   alembic upgrade head
-   ```
-
    If you've made changes to the database models, generate a new migration:
    ```bash
    alembic revision --autogenerate -m "your migration message"
@@ -409,195 +412,34 @@ Run with:
 docker-compose up -d
 ```
 
-## 🚀 CI/CD with GitHub Actions
+## 🚀 Deployment
 
-This project includes a complete CI/CD pipeline using GitHub Actions for automated testing, building, and deployment to Google Cloud Platform.
+### Render Deployment (Recommended)
 
-### GitHub Workflow Features
+1. **Create a New Web Service**
+   - Go to [Render Dashboard](https://dashboard.render.com).
+   - Click "New +" -> "Web Service".
+   - Connect your GitHub repository.
 
-The `.github/workflows/gcp-deploy.yml` workflow provides:
+2. **Configure Service**
+   - **Environment**: Docker
+   - **Branch**: main
+   - **Region**: Choose closest to your users
+   - **Plan**: Free (supports WebSockets!)
 
-- **Continuous Integration**:
-  - Automated testing on push/PR to main branch
-  - Python dependency caching
-  - Code linting with flake8
-  - Manual workflow dispatch
+3. **Environment Variables**
+   - Add all your production variables (see Environment Variables section).
+   - Make sure to set `PORT=8000` (Render defaults to 10000).
 
-- **Continuous Deployment**:
-  - Docker image building and pushing to Google Container Registry (GCR)
-  - Kubernetes deployment to Google Kubernetes Engine (GKE)
-  - Network Endpoint Group (NEG) management for load balancing
-  - Health check integration
-  - Rollback capabilities
+4. **Deploy**
+   - Click "Create Web Service".
+   - Render will build and deploy your Docker container automatically.
 
-### Setting Up GitHub Actions
+### Alternative Deployment Methods
 
-#### 1. Infrastructure Setup
+This project also supports deployment to Google Cloud Platform. Please refer to the detailed guide below:
 
-**Before setting up GitHub Actions, you must create the required Google Cloud infrastructure using the dedicated infrastructure repository:**
-
-👉 **[Portfolio Website Infrastructure Repository](https://github.com/Portfolio-Website-DarylCFerns99/portfolio-website-infrastructure)**
-
-This repository contains Terraform configurations to automatically provision:
-- Google Kubernetes Engine (GKE) cluster
-- Network Endpoint Groups (NEGs)
-- Load balancers and networking components
-- IAM roles and permissions
-- Artifact Registry repositories
-
-Follow the instructions in the infrastructure repository to create all required cloud resources before proceeding with the GitHub Actions setup.
-
-#### 2. Required GitHub Secrets
-
-Configure these secrets in your GitHub repository (`Settings > Secrets and variables > Actions`):
-
-```bash
-# Google Cloud Platform
-GCP_SA_KEY              # Service account JSON key (base64 encoded)
-GCP_PROJECT_ID          # Your GCP project ID
-GCP_REGION              # GCP region (e.g., us-central1)
-GCP_ZONE                # GCP zone (e.g., us-central1-a)
-GKE_CLUSTER_NAME        # Your GKE cluster name
-
-# Kubernetes
-K8S_NAMESPACE           # Kubernetes namespace (e.g., default)
-DEPLOYMENT_NAME         # Deployment name (e.g., fastapi-app)
-GCP_BACKEND_PORT        # Backend port (8000)
-
-# Application
-ENV_FILE                # Complete .env file content for production
-```
-
-#### 3. Service Account Setup
-
-Create a service account with the following permissions for GitHub Actions deployment:
-
-**Required IAM Roles:**
-- **Artifact Registry Create-on-Push Writer** - `roles/artifactregistry.createOnPushWriter`
-- **Artifact Registry Writer** - `roles/artifactregistry.writer`  
-- **Compute Admin** - `roles/compute.admin`
-- **Kubernetes Engine Admin** - `roles/container.admin`
-- **Service Account User** - `roles/iam.serviceAccountUser`
-- **Storage Admin** - `roles/storage.admin`
-
-```bash
-# Create service account
-gcloud iam service-accounts create github-actions \
-    --description="Service account for GitHub Actions" \
-    --display-name="GitHub Actions"
-
-# Get the service account email
-SA_EMAIL="github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com"
-
-# Grant required permissions
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/artifactregistry.createOnPushWriter"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/artifactregistry.writer"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/compute.admin"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/container.admin"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/iam.serviceAccountUser"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/storage.admin"
-
-# Create and download key
-gcloud iam service-accounts keys create key.json \
-    --iam-account=$SA_EMAIL
-```
-
-#### 4. Workflow Triggers
-
-The workflow runs on:
-- **Push to main branch**: Automatically deploys to production
-- **Pull requests to main**: Runs tests and linting
-- **Manual dispatch**: Can be triggered manually from GitHub Actions tab
-
-#### 5. Deployment Process
-
-1. **Code Quality Checks**:
-   ```bash
-   # Lint with flake8
-   flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-   ```
-
-2. **Docker Build & Push**:
-   ```bash
-   # Build with commit SHA tag
-   docker build -t gcr.io/PROJECT_ID/fastapi-app:COMMIT_SHA .
-   docker push gcr.io/PROJECT_ID/fastapi-app:COMMIT_SHA
-   ```
-
-3. **Kubernetes Deployment**:
-   ```bash
-   # Update deployment image
-   kubectl set image deployment/fastapi-app api=gcr.io/PROJECT_ID/fastapi-app:NEW_TAG
-   kubectl rollout status deployment/fastapi-app --timeout=180s
-   ```
-
-4. **Health Check**: The deployment includes readiness probes that check the `/healthz` endpoint
-
-#### 6. Monitoring Deployment
-
-**Check deployment status:**
-```bash
-# View pods
-kubectl get pods -l app=fastapi-app
-
-# Check deployment status
-kubectl rollout status deployment/fastapi-app
-
-# View logs
-kubectl logs -l app=fastapi-app --tail=100
-```
-
-**Access the application:**
-```bash
-# Port forward for testing
-kubectl port-forward deployment/fastapi-app 8000:8000
-
-# Or set up an ingress/load balancer
-```
-
-### Workflow Configuration Details
-
-The workflow includes several advanced features:
-
-- **Environment Management**: Production environment variables are injected via GitHub secrets
-- **Caching**: Python dependencies are cached to speed up builds
-- **Error Handling**: Continues on lint errors but fails on build/deploy errors
-- **Resource Management**: Kubernetes deployment includes resource limits and requests
-- **Rolling Updates**: Zero-downtime deployments with health checks
-- **NEG Management**: Automatically manages Network Endpoint Groups for load balancing
-
-## 🔧 GitHub Integration
-
-Projects of type "github" will:
-- Fetch repository data from GitHub when created
-- Store complete GitHub API response in the `additional_data` field
-- Have a 1-day expiration for the data
-- Auto-refresh when accessed after expiration
-- Can be manually refreshed via the refresh endpoint
-- Support for private repositories (with proper GitHub token)
-
-**GitHub API Features:**
-- Repository metadata (stars, forks, language, description)
-- README content extraction
-- Repository statistics
-- Automatic language detection
+-   **[Google Cloud Platform Deployment](DEPLOYMENT-GCP.md)**
 
 ## 🚀 Production Deployment
 
@@ -613,18 +455,6 @@ Projects of type "github" will:
 - [ ] Set up database backups
 - [ ] Configure health check endpoints
 - [ ] Set up error tracking (e.g., Sentry)
-
-### Environment Variables for Production
-
-```env
-DATABASE_URL=postgresql://user:secure_password@prod-db:5432/portfolio_prod
-DEBUG=False
-JWT_SECRET_KEY=your_super_secure_production_key_here
-CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-SENDGRID_API_KEY/MAILGUN_API_KEY=your_production_sendgrid/mailgun_key
-SENDGRID_FROM_EMAIL/MAILGUN_FROM_EMAIL=noreply@yourdomain.com
-ADMIN_EMAIL=admin@yourdomain.com
-```
 
 ### Performance Optimization
 
