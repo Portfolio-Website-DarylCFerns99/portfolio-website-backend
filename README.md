@@ -23,6 +23,9 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 - **UUID Primary Keys**: Enhanced security with UUID identifiers
 - **Database Resilience**: Retry and rollback mechanisms
 - **Contact Form Email**: SendGrid/Mailgun integration for contact form submissions with email notifications
+- **AI Chatbot**: RAG-powered chatbot using Gemini for context-aware portfolio Q&A
+- **Chat History**: Anonymous session persistence for chat interactions
+- **Admin Chat Console**: Real-time view of user-bot interactions
 - **Health Check**: Database connectivity monitoring endpoint
 - **CI/CD Pipeline**: Automated testing, building, and deployment with GitHub Actions
 - **Cloud Deployment**: Ready for Google Cloud Platform (GKE) deployment
@@ -32,8 +35,6 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 ```
 portfolio-website-backend/
 ├── .github/                  # GitHub Actions workflows
-│   └── workflows/
-│       └── gcp-deploy.yml    # CI/CD pipeline configuration
 ├── app/
 │   ├── config/               # App configuration
 │   │   ├── database.py       # Database connection
@@ -45,7 +46,8 @@ portfolio-website-backend/
 │   │   ├── experience_controller.py
 │   │   ├── skill_controller.py
 │   │   ├── user_controller.py
-│   │   └── contact_controller.py
+│   │   ├── contact_controller.py
+│   │   └── chatbot_controller.py # Chatbot endpoints
 │   ├── dependencies/         # FastAPI dependencies
 │   │   ├── auth.py           # Authentication
 │   │   └── database.py       # DB session
@@ -58,7 +60,9 @@ portfolio-website-backend/
 │   │   ├── review_model.py
 │   │   ├── experience_model.py
 │   │   ├── skill_model.py
-│   │   └── user_model.py
+│   │   ├── user_model.py
+│   │   ├── chat_model.py     # Chat sessions & messages
+│   │   └── vector_store.py   # Vector embeddings
 │   ├── repositories/         # Data access layer
 │   │   ├── base_repository.py
 │   │   ├── project_repository.py
@@ -83,6 +87,7 @@ portfolio-website-backend/
 │   │   ├── review_service.py
 │   │   ├── experience_service.py
 │   │   └── skill_service.py
+│   │   └── vector_service.py # RAG & Embeddings logic
 │   ├── templates/            # Email templates
 │   │   └── emails/
 │   │       ├── confirmation.html
@@ -184,8 +189,18 @@ portfolio-website-backend/
 - `GET /api/v1/skills/groups/public` - List visible skill groups only (public access)
 
 ### Contact
-
+ 
 - `POST /api/v1/contact/{user_id}` - Send contact form emails (public access)
+
+### Chatbot (Admin)
+
+- `POST /api/v1/chatbot/sync` - Trigger RAG vector store synchronization (requires auth)
+- `GET /api/v1/chatbot/sessions` - List chat sessions (requires auth)
+- `GET /api/v1/chatbot/sessions/{session_id}/messages` - Get specific session history (requires auth)
+
+### Chatbot (Public)
+
+- `WS /api/v1/chatbot/ws/chat` - WebSocket endpoint for real-time chat
 
 ### System
 
@@ -296,23 +311,14 @@ To use this feature:
    - **Option 1**: Install PostgreSQL locally
    - **Option 2**: Use [Neon](https://neon.tech/) - a serverless PostgreSQL service with a generous free tier that requires no credit card. Neon provides high-performance databases with automated scaling and branching capabilities.
 
-5. **Create a `.env` file:**
-   ```env
-   DATABASE_URL=postgresql://user:password@localhost/dbname
-   API_PREFIX=/api/v1
-   DEBUG=True
-   MAX_DB_RETRIES=3
-   RETRY_BACKOFF=0.5
-   JWT_SECRET_KEY=your_super_secret_key_change_this_in_production
-   ACCESS_TOKEN_EXPIRE_MINUTES=120
-   GITHUB_TOKEN=your_github_token  # Optional, for GitHub API
-   CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
-   MAILGUN_API_KEY=your_mailgun_api_key  # For email functionality
-   MAILGUN_FROM_EMAIL=your-verified@email.com
-   MAILGUN_NOTIFICATION_TEMPLATE_ID=your_notification_template_id
-   MAILGUN_CONFIRMATION_TEMPLATE_ID=your_confirmation_template_id
-   ADMIN_EMAIL=your-admin@email.com
+5. **Set up environment variables:**
+   ```bash
+   cp env.example .env
+   # On Windows: copy env.example .env
    ```
+
+   Update the `.env` file with your configuration
+   
    **Note**: For CORS_ORIGINS, you can specify multiple origins separated by commas, or use "*" to allow all origins (not recommended for production).
 
 6. **Apply database migrations:**
