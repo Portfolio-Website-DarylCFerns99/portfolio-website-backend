@@ -157,7 +157,7 @@ async def fetch_github_data(github_url: str) -> Tuple[Dict[str, Any], Dict[str, 
         
         # Fetch README.md file
         raw_github_url = f"https://raw.githubusercontent.com/{username}/{repo_name}/main/"
-        readme_url = f"{raw_github_url}/README.md"
+        readme_url = f"{raw_github_url}README.md"
         try:
             readme_response = await client.get(readme_url, follow_redirects=True)
             if readme_response.status_code == 200:
