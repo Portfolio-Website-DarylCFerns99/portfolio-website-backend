@@ -46,7 +46,8 @@ class LLMFactory:
             return GoogleGenerativeAIEmbeddings(
                 model=settings.GEMINI_EMBEDDING_MODEL,
                 google_api_key=api_key,
-                task_type="retrieval_document"
+                task_type="retrieval_document",
+                output_dimensionality=768
             )
         else:
             raise NotImplementedError(f"Embeddings provider {provider} not supported user")
