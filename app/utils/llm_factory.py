@@ -44,7 +44,7 @@ class LLMFactory:
                 raise ValueError("GEMINI_API_KEY not found in environment variables")
                 
             return GoogleGenerativeAIEmbeddings(
-                model="models/text-embedding-004",
+                model=settings.GEMINI_EMBEDDING_MODEL,
                 google_api_key=api_key,
                 task_type="retrieval_document"
             )
