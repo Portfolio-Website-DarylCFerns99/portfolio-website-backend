@@ -19,7 +19,7 @@ class VectorService:
 
     def generate_embedding(self, text_content: str) -> List[float]:
         """Generate embedding vector for a given text."""
-        return self.embeddings_model.embed_query(text_content)
+        return self.embeddings_model.embed_query(text_content, output_dimensionality=768)
 
     def search(self, query_text: str, limit: int = 5, filters: List[str] = None) -> List[VectorEmbedding]:
         """
