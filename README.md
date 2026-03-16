@@ -12,8 +12,6 @@ A FastAPI MVC application for managing projects, reviews, experiences, and skill
 
 ## 🚀 Features
 
-- **High-Performance API**: Utilizes PostgreSQL Materialized Views and LRU memory caching for sub-millisecond response times.
-- **Payload Compression**: Native GZip compression for huge bandwidth reduction on large portfolio JSON payloads.
 - **Project Management**: CRUD operations for portfolio projects with visibility control
 - **Project Categories**: Classify projects into categories with visibility control
 - **GitHub Integration**: Auto-fetch data for GitHub projects with daily refresh
@@ -372,15 +370,19 @@ This project also supports deployment to Google Cloud Platform. Please refer to 
 - [ ] Configure health check endpoints
 - [ ] Set up error tracking (e.g., Sentry)
 
-### Performance Optimizations Implemented
+### Performance Optimization
 
 **Database:**
-- **Materialized Views**: The public portfolio data endpoint uses a PostgreSQL Materialized View (`portfolio_mv`) with `json_agg` to compile all user projects, skills, and experiences into a single JSON row, eliminating 7+ sequential database queries.
-- **Concurrent Refreshing**: Mutating endpoints automatically trigger `REFRESH MATERIALIZED VIEW CONCURRENTLY` inside the `BaseRepository` to update the cache in the background without locking read operations.
+- Use connection pooling
+- Implement query optimization
+- Set up database indices
+- Configure read replicas if needed
 
 **Application:**
-- **In-Memory LRU Caching**: A 24-hour `TTLCache` wraps the materialized view results. Repeated requests bypass PostgreSQL entirely, serving responses from RAM in under 5ms. The cache automatically invalidates when database records are created or updated.
-- **GZip Compression**: Integrates `GZipMiddleware` to compress large JSON responses by up to 90% before sending them over the network.
+- Use gunicorn or uvicorn with multiple workers
+- Implement Redis for caching
+- Set up CDN for static assets
+- Configure gzip compression
 
 ## 📊 Monitoring and Logging
 

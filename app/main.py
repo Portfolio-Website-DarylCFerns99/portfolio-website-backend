@@ -52,10 +52,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add GZip compression for large payloads (e.g. portfolio_mv responses)
-from fastapi.middleware.gzip import GZipMiddleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
 # Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):

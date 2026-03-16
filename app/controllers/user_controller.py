@@ -10,7 +10,6 @@ from app.models.experience_model import Experience
 from app.models.project_model import Project
 from app.models.project_category_model import ProjectCategory
 from app.models.review_model import Review
-from app.models.portfolio_mv_model import PortfolioMV
 from app.schemas.user_schema import UserResponse, UserUpdate
 from app.security.password import verify_password
 from app.security.token import create_access_token
@@ -21,12 +20,8 @@ import json
 import math
 from dateutil.relativedelta import relativedelta
 from uuid import UUID
-from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
-
-# Cache for the heavy public portfolio data payload (memory cache)
-portfolio_cache = TTLCache(maxsize=1000, ttl=86400) # 24hr cache
 
 router = APIRouter(
     prefix="/users",
@@ -196,88 +191,109 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
     Returns:
         dict: Formatted portfolio data
     """
-    user_id_str = str(user_id)
+    # Get the user by ID
+    user = db.query(User).filter(User.id == user_id).first()
     
-    # 1. Check in-memory Cache First (0 database queries, <5ms response time)
-    if user_id_str in portfolio_cache:
-        logger.info(f"Serving portfolio data for {user_id_str} from cache")
-        return portfolio_cache[user_id_str]
-        
-    import time
-    print(f"Starting to fetch data for user {user_id}")
-    start_time = time.time()
-    
-    # Get the user's aggregated data from the materialized view
-    portfolio_data = db.query(PortfolioMV).filter(PortfolioMV.user_id == user_id).first()
-    
-    if not portfolio_data:
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
     
-    # Calculate total experience (optional: you could do this in JS, but keeping the python logic identical)
-    # The 'experiences' field in our MV is a JSON array, so we parse it as dicts
-    experiences_list = portfolio_data.experiences or []
+    # Get all public skill groups and their skills
+    skill_groups = db.query(SkillGroup).filter(SkillGroup.is_visible == True).all()
     
-    # Let's recreate the calculate_total_experience behavior with our dictionary representations
-    experience_objects = [exp for exp in experiences_list if exp.get("type") == "experience"]
-    total_experience_years = 0
+    # Get all public experiences (work and education)
+    experiences = db.query(Experience).filter(Experience.is_visible == True).all()
     
-    for exp in experience_objects:
-        start_date = datetime.strptime(exp.get("start_date"), "%Y-%m-%d").date() if exp.get("start_date") else datetime.now().date()
-        end_date = datetime.strptime(exp.get("end_date"), "%Y-%m-%d").date() if exp.get("end_date") else datetime.now().date()
-        diff = relativedelta(end_date, start_date)
-        years = diff.years + (diff.months / 12) + (diff.days / 365.25)
-        total_experience_years += years
-        
-    floor_years = round(total_experience_years)
-    if floor_years < 2:
-        total_experience = floor_years
-    elif total_experience_years > floor_years:
-        total_experience = f"{floor_years}+"
-    else:
-        total_experience = str(floor_years)
-
+    # Get all public project categories
+    project_categories = db.query(ProjectCategory).filter(ProjectCategory.is_visible == True).all()
+    
+    # Get all public projects
+    projects = db.query(Project).filter(Project.is_visible == True).all()
+    
+    # Get all public projects
+    reviews = db.query(Review).filter(Review.is_visible == True).all()
+    
+    # Calculate total experience
+    total_experience = calculate_total_experience(experiences)
+    
     # Images are already in base64 format in the database
-    avatar_base64 = portfolio_data.avatar
-    about_dict = portfolio_data.about or {}
-    about_image_base64 = about_dict.get('image')
+    avatar_base64 = user.avatar
+    about_image_base64 = user.about.get('image') if user.about else None
     
     # Format experiences for timelineData
     timeline_data = []
-    for exp in experiences_list:
-        # Convert date strings to formatted strings
-        start_date_obj = datetime.strptime(exp.get("start_date"), "%Y-%m-%d")
-        
-        if exp.get("end_date"):
-            end_date_obj = datetime.strptime(exp.get("end_date"), "%Y-%m-%d")
-            period = f"{start_date_obj.strftime('%b %Y')} - {end_date_obj.strftime('%b %Y')}"
-        else:
-            period = f"{start_date_obj.strftime('%b %Y')} - Present"
-            
+    
+    for exp in experiences:
         item = {
-            "id": exp.get("id"),
-            "type": exp.get("type"),
-            "title": exp.get("title"),
-            "company": exp.get("company"),
-            "period": period,
-            "year": start_date_obj.year,
-            "description": exp.get("description")
+            "id": str(exp.id),
+            "type": exp.type,
+            "title": exp.title,
+            "company": exp.organization,
+            "period": f"{exp.start_date.strftime('%b %Y')} - {'Present' if not exp.end_date else exp.end_date.strftime('%b %Y')}",
+            "year": exp.start_date.year,
+            "description": exp.description
         }
         
-        if exp.get("type") == "education":
+        if exp.type == "education":
+            # For education, rename fields to match expected format
             item["institution"] = item.pop("company")
             item["degree"] = item.pop("title")
         
         timeline_data.append(item)
     
-    # Social links
-    social_links = portfolio_data.social_links or []
+    # Format skill groups
+    formatted_skill_groups = []
+    for group in skill_groups:
+        # Check if skills is a JSON array or a relationship
+        if hasattr(group, 'skills') and isinstance(group.skills, list):
+            # It's JSON data
+            skills_data = group.skills
+        else:
+            # It's a relationship
+            skills_data = [
+                {
+                    "id": str(skill.id),
+                    "name": skill.name,
+                    "proficiency": skill.proficiency,
+                    "color": skill.color,
+                    "icon": skill.icon
+                }
+                for skill in group.skills if hasattr(skill, 'is_visible') and skill.is_visible
+            ]
+        
+        formatted_group = {
+            "name": group.name,
+            "skills": skills_data
+        }
+        formatted_skill_groups.append(formatted_group)
     
-    # Full featured skill details
+    # Format projects - images are already in base64 format
+    formatted_projects = []
+    for project in projects:
+        project_data = {
+            "id": str(project.id),
+            "type": project.type,
+            "title": project.title,
+            "description": project.description,
+            "image": project.image,  # Already base64 encoded
+            "tags": project.tags if project.tags else [],
+            "url": project.url,
+            "additional_data": project.additional_data,
+            "created_at": project.created_at,
+            "project_category_id": str(project.project_category_id)
+        }
+        formatted_projects.append(project_data)
+    
+    # Social links - Use the user's social links directly
+    social_links = user.social_links if user.social_links else []
+    
+    # Get the user's featured skills if any
+    featured_skill_ids = user.featured_skill_ids if user.featured_skill_ids else []
+    
+    # Get the full featured skill details if featured_skill_ids exist
     featured_skills = []
-    featured_skill_ids = portfolio_data.featured_skill_ids or []
     if featured_skill_ids:
         featured_skills_data = db.query(Skill).filter(Skill.id.in_(featured_skill_ids)).all()
         featured_skills = [
@@ -291,16 +307,16 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
             for skill in featured_skills_data
         ]
     
-    # Build the final response
+    # Build the final response according to the required format
     response = {
-        "name": portfolio_data.name,
-        "surname": portfolio_data.surname,
-        "title": portfolio_data.title,
-        "email": portfolio_data.email,
-        "phone": portfolio_data.phone,
-        "location": f"Based in {portfolio_data.location}" if portfolio_data.location else "",
-        "availability": portfolio_data.availability,
-        "avatar": avatar_base64,
+        "name": user.name,
+        "surname": user.surname,
+        "title": user.title,
+        "email": user.email,
+        "phone": user.phone,
+        "location": f"Based in {user.location}" if user.location else "",
+        "availability": user.availability,
+        "avatar": avatar_base64,  # Already base64 encoded
         "heroStats": {
             "experience": total_experience
         },
@@ -310,9 +326,9 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
             "title": "More about",
             "highlight": "Myself",
             "subtitle": "About",
-            "description": about_dict.get("description", ""),
-            "shortdescription": about_dict.get("shortdescription", ""),
-            "image": about_image_base64
+            "description": user.about.get("description") if user.about else "",
+            "shortdescription": user.about.get("shortdescription") if user.about else "",
+            "image": about_image_base64  # Already base64 encoded
         },
         "projectsSection": {
             "subtitle": "Projects",
@@ -329,26 +345,11 @@ def get_public_data(user_id: UUID, db: Session = Depends(get_db)):
             "title": "My",
             "highlight": "Experience & Education"
         },
-        "skillGroups": portfolio_data.skill_groups or [],
+        "skillGroups": formatted_skill_groups,
         "timelineData": timeline_data,
-        "projectCategories": portfolio_data.project_categories or [],
-        "projects": portfolio_data.projects or [],
-        "reviews": portfolio_data.reviews or []
+        "projectCategories": project_categories,
+        "projects": formatted_projects,
+        "reviews": reviews
     }
     
-    # Save the huge payload to the 24hr memory cache to bypass Postgres next time
-    portfolio_cache[user_id_str] = response
-    
-    end_time = time.time()
-    print(f"Time taken to fetch data for user {user_id}: {end_time - start_time}")
-    
     return response
-
-def clear_portfolio_cache(user_id: str):
-    """
-    Clears the public portfolio cache for a specific user.
-    Called automatically by BaseRepository when the materialized view refreshes.
-    """
-    if str(user_id) in portfolio_cache:
-        portfolio_cache.pop(str(user_id), None)
-        logger.info(f"Cleared portfolio cache for user {user_id}")
